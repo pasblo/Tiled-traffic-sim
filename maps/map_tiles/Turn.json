@@ -1,0 +1,28 @@
+{
+    "stops":[
+
+    ],
+    "turns":[
+        {
+            "id":0,
+            "x":138,
+            "y":72,
+            "first-angle":180,
+            "second-angle":270,
+            "min-distance":1,
+            "max-distance":66,
+            "can-skip":"False"
+        }
+    ],
+    "traffic-lights":[
+
+    ],
+    "road-connections":[
+        {
+            "angle":0
+        },
+        {
+            "angle":90
+        }
+    ]
+}

@@ -1,0 +1,19 @@
+{
+    "stops":[
+
+    ],
+    "turns":[
+
+    ],
+    "traffic-lights":[
+
+    ],
+    "road-connections":[
+        {
+            "angle":0
+        },
+        {
+            "angle":180
+        }
+    ]
+}
