@@ -1,6 +1,6 @@
 """
 Originally designed by pasblo
-MIT License
+GNU GENERAL PUBLIC LICENSE
 """
 
 import math
@@ -19,11 +19,11 @@ LIMIT_VEHICLES = 40
 pygame.font.init()
 
 # Create map from tiles
-map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":0.2}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":5, "Rotation":0}, {"Tile":2, "Rotation":180}],
-                  [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":4, "Rotation":90}, {"Tile":3, "Rotation":0}],
+map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":5, "Rotation":0}, {"Tile":2, "Rotation":180}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":4, "Rotation":90}, {"Tile":3, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}],
                   [{"Tile":2, "Rotation":270}, {"Tile":6, "Rotation":0}, {"Tile":4, "Rotation":0}, {"Tile":2, "Rotation":90}, {"Tile":1, "Rotation":90}],
-                  [{"Tile":2, "Rotation":90}, {"Tile":2, "Rotation":0}, {"Tile":3, "Rotation":0}, {"Tile":2, "Rotation":180}, {"Tile":1, "Rotation":90}],
-                  [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":2, "Rotation":0}, {"Tile":2, "Rotation":90}]]
+                  [{"Tile":2, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":2, "Rotation":0}, {"Tile":3, "Rotation":0}, {"Tile":2, "Rotation":180}, {"Tile":1, "Rotation":90}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":2, "Rotation":0}, {"Tile":2, "Rotation":90}]]
 
 """map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":1, "Rotation":0}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}],
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
@@ -91,6 +91,7 @@ while True:
     vehicles_list = AutonomusControl.despawn_vehicles(test_map, vehicles_list)
 
     AutonomusControl.move_vehicles(vehicles_list, test_map, time_delta, set_vehicle)
+    AutonomusControl.check_collisions(vehicles_list)
 
     screen.fill((255, 255, 255))
     test_map.tick(time_delta)

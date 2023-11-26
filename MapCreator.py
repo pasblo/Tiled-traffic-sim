@@ -1,6 +1,6 @@
 """
 Originally designed by pasblo
-MIT License
+GNU GENERAL PUBLIC LICENSE
 """
 
 import MapTile
@@ -12,6 +12,16 @@ import json
 TILE_SIZE = 21 # In meters, cannot be changed (Fixed to tile and vehicle image design)
 
 def create_map(map_descriptor, map_name):
+    """
+    Creates a map based on the provided map descriptor and saves it as an image and JSON file.
+
+    Parameters:
+    - map_descriptor (list of lists): Descriptor of the map layout.
+    - map_name (str): Name of the map.
+
+    Returns:
+    - tuple: Screen width and height of the created map.
+    """
 
     # Size on pixels of each tile
     tile_pixel_size = TILE_SIZE * math_utils.MAP_SCALE

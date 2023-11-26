@@ -1,6 +1,6 @@
 """
 Originally designed by pasblo
-MIT License
+GNU GENERAL PUBLIC LICENSE
 """
 
 import pygame
@@ -28,12 +28,24 @@ TILES = ["Grass", "Straight", "Turn", "Uncontrolled_crossroad",
 class Road_Connection():
 
     def __init__(self, specs):
+        """
+        Initialize the road connection with the given specifications.
+
+        Parameters:
+        - specs (dict): Specifications for the road connection.
+        """
 
         # Basic information
         self.angle = math.radians(specs["angle"])
 
 class MapTile():
     def __init__(self, name):
+        """
+        Initialize the map tile with the given name.
+
+        Parameters:
+        - name (str): The name of the map tile.
+        """
 
         # Basic map tile data
         self.name = name
@@ -183,8 +195,10 @@ class MapTile():
                 }
         }
                 
-    
     def _resize(self, factor):
+        """
+        Resize the tile and its components by a given factor.
+        """
 
         # Resize the tile itself
         self.size_x *= factor
@@ -214,6 +228,9 @@ class MapTile():
             turn.max_distance *= factor
     
     def _rotate(self, radians):
+        """
+        Rotate the tile and its components by a given angle in radians.
+        """
 
         # Rotate the image
         self.image = pygame.transform.rotate(self.image, math.degrees(radians))
@@ -249,6 +266,9 @@ class MapTile():
             road_connection.angle = math_utils.correct_radian(road_connection.angle)
     
     def _move(self, dx, dy):
+        """
+        Move the tile and its components by the specified displacement.
+        """
 
         # Move stops
         for stop in self.stops:
