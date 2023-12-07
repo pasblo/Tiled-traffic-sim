@@ -16,7 +16,12 @@ import MapCreator
 TIME_FACTOR = 1 # 1 second of simulation, equals TIME_FACTOR seconds
 LIMIT_VEHICLES = 40
 
+# Initialize pygame fonts
 pygame.font.init()
+font = pygame.font.Font(None, 36)
+
+# Initialize pygame clock
+clock = pygame.time.Clock()
 
 # Create map from tiles
 map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":5, "Rotation":0}, {"Tile":2, "Rotation":180}],
@@ -31,23 +36,37 @@ map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probabili
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}]]"""
 
+# Create the map itself and get the size needed for the screen
 map_name = "TestMap"
-
 map_size = MapCreator.create_map(map_descriptor, map_name)
 
-screen = pygame.display.set_mode(map_size)
+# Create the screen and name it
+screen = pygame.display.set_mode(map_size, pygame.SRCALPHA)
 pygame.display.set_caption('Traffic System')
 
 # Load map
 test_map = Map.Map(map_name)
 
+# Load all variables needed
 vehicles_list = []
 latest_vehicle_id = 0
-
+dynamic_multiplier = TIME_FACTOR
 time_delta = 1
 last_time = time.time_ns()
 set_vehicle = -1
-dynamic_multiplier = TIME_FACTOR
+
+# Calculate error probability
+total_number_of_collisions = 0
+total_number_of_cars = 0
+collision_rate = 0
+
+"""
+Probabilidades:
+Sin nada: ~4%
+Con frenado entre coches: 
+Con algoritmo: 
+"""
+
 while True:
 
     # Time delta calculations
@@ -83,25 +102,69 @@ while True:
             elif event.key == pygame.K_PLUS:
                 dynamic_multiplier *= 1.2
 
+    # Making sure the we only have a certain amount of vehicles
     if len(vehicles_list) < LIMIT_VEHICLES:
+
+        # Spawn vehicles on the spawn points
         new_sapwns = AutonomusControl.spawn_vehicles(test_map, time_delta, latest_vehicle_id)
+        total_number_of_cars += len(new_sapwns)
         vehicles_list.extend(new_sapwns["vehicles"])
         latest_vehicle_id = new_sapwns["new_id"]
-
-    vehicles_list = AutonomusControl.despawn_vehicles(test_map, vehicles_list)
-
-    AutonomusControl.move_vehicles(vehicles_list, test_map, time_delta, set_vehicle)
-    AutonomusControl.check_collisions(vehicles_list)
-
-    screen.fill((255, 255, 255))
+    
+    # Update all elements on the map
     test_map.tick(time_delta)
+
+    # Despawn vehicles if needed
+    vehicles_list = AutonomusControl.despawn_vehicles(test_map, vehicles_list, map_size)
+
+    # Move all vehicles
+    AutonomusControl.move_vehicles(vehicles_list, test_map, time_delta, set_vehicle)
+
+    # Check the collisions between the vehicles
+    total_number_of_collisions += AutonomusControl.check_collisions(vehicles_list)
+
+    # Calculate the collision rate
+    collision_rate = (total_number_of_collisions / total_number_of_cars) * 100
+
+    # Fill the screen with black
+    screen.fill((255, 255, 255))
+
+    # Render all elements on the screen
     test_map.render(screen)
     AutonomusControl.render_vehicles(vehicles_list, screen, test_map, set_vehicle)
+
+    # FPS counter
+    fps = clock.get_fps()
+    fps_text = font.render(f"FPS: {fps:.2f}", True, (255, 165, 0))
+    screen.blit(fps_text, (10, 10))
+
+    # Render the debug text on the screen
+    """text_1 = font.render(f"Speed: {dynamic_multiplier}", True, (0, 0, 0))  # Black color
+    text_1_rect = text_1.get_rect()
+    text_1_rect.topleft = (10, pygame.display.Info().current_h - text_1_rect.height - 10)  # Adjust the position here
+    screen.blit(text_1, text_1_rect)
+
+    text_1 = font.render(f"# Vehicles: {len(vehicles_list)}", True, (0, 0, 0))  # Black color
+    text_1_rect = text_1.get_rect()
+    text_1_rect.topleft = (10, pygame.display.Info().current_h - text_1_rect.height - 30)  # Adjust the position here
+    screen.blit(text_1, text_1_rect)
+
+    text_1 = font.render(f"Collision rate: {collision_rate}%", True, (0, 0, 0))  # Black color
+    text_1_rect = text_1.get_rect()
+    text_1_rect.topleft = (10, pygame.display.Info().current_h - text_1_rect.height - 50)  # Adjust the position here
+    screen.blit(text_1, text_1_rect)"""
+
+    # Update the screen
     pygame.display.flip()
 
     # Pump the event queue
     pygame.event.pump()
 
+    # Tick the FPS clock
+    clock.tick()  # Set the desired frame rate (e.g., 60 FPS)
+
 # NOTES:
 # The function that calculates the distance between cars, it has to take into consideration
 # the turning angles, and calculate the curved distance as well as the straight distance
+# Create a list of all vehicles with what tile are they in, so other functions can make use
+# of it and be more efficient

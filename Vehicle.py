@@ -17,10 +17,10 @@ import random
 - Size in m
 - Spawning rate in percentage each time a vehicle needs to spawn, the total should be 1, increasing
 """
-SUV = {"Name":"SUV", "Max-speed":120, "Acceleration":3.9, "Brake-deceleration":340, "Size":4.4, "Spawning-rate":0.6}
-TRUCK = {"Name":"Truck", "Max-speed":60, "Acceleration":3.9, "Brake-deceleration":340, "Size":6, "Spawning-rate":0.7}
-BUS = {"Name":"Bus", "Max-speed":60, "Acceleration":3.9, "Brake-deceleration":340, "Size":6, "Spawning-rate":0.8}
-BIKE = {"Name":"Bike", "Max-speed":80, "Acceleration":3.9, "Brake-deceleration":340, "Size":1.5, "Spawning-rate":1}
+SUV = {"Name":"SUV", "Max-speed":120, "Acceleration":10, "Brake-deceleration":200, "Size":4.4, "Spawning-rate":0.6}
+TRUCK = {"Name":"Truck", "Max-speed":60, "Acceleration":10, "Brake-deceleration":200, "Size":6, "Spawning-rate":0.7}
+BUS = {"Name":"Bus", "Max-speed":60, "Acceleration":10, "Brake-deceleration":200, "Size":6, "Spawning-rate":0.8}
+BIKE = {"Name":"Bike", "Max-speed":80, "Acceleration":10, "Brake-deceleration":200, "Size":1.5, "Spawning-rate":1}
 
 VEHICLES = [SUV, TRUCK, BUS, BIKE]
 
@@ -38,9 +38,11 @@ All sizes and positions are in pixels
 """
 
 DISTANCE_TO_STOP = 1 # Distance in meters to a stop where the vehicle will decide to stop or advance
+OBSERVING_DISTANCE = 10 # Distance in meters a vehicle can see in front of it
+OBSERVING_DETECTION_RANGE = 3 # Distance from the observing line to the car to be detected, cannot be more than 3.5m
 
 class Vehicle(pygame.sprite.Sprite):
-    def __init__(self, type_of_vehicle, starting_state):
+    def __init__(self, type_of_vehicle, starting_state, map):
         """
         Initializes a new instance of the Vehicle class.
 
@@ -72,7 +74,9 @@ class Vehicle(pygame.sprite.Sprite):
         self.x = starting_state["x"]
         self.y = starting_state["y"]
         self.direction = starting_state["direction"]  # In radians
+        self.corrected_direction = math_utils.correct_radian(self.direction + math.pi)
         self.speed = starting_state["speed"]
+        self._calculate_tile_location(map) # Calculate the tile the vehicle is in
         self._calculate_front_position()  # Calculate front position based on current state
         self._rotate_image()  # Rotate the image based on the current direction
 
@@ -80,6 +84,7 @@ class Vehicle(pygame.sprite.Sprite):
         self.braking = False
         self.turning = False
         self.skippingturn = False
+        self.skipturn = False
 
         # Map information
         self.closest_stop_id = -1
@@ -100,6 +105,27 @@ class Vehicle(pygame.sprite.Sprite):
 
         # Temporal variables
         self.font = pygame.font.Font(None, 36)
+
+        # Collision and avoidance variables
+        self.colliding_vehicles = []
+        self.temporal_surface = None
+        self.debug_detected = False
+        self.closest_vehicle_distance = 1000000 # In meters
+
+        # Colision turns
+        self.collision_x = -1
+        self.collision_y = -1
+        self.collision_turn_point = (-1, -1)
+        self.collision_segment1_x = self.front_x
+        self.collision_segment1_y = self.front_y
+        self.collision_turning_direction = -1
+        self.collision_tangential_vector = (0, 0)
+        self.collision_turn_angle = -1
+        self.collision_turn_x = -1
+        self.collision_turn_y = -1
+        self.collision_segment2_x = -1
+        self.collision_segment2_y = -1
+        self.collision_status = 0 # 0 - Nothing detected, 1 - First time detecting turn, 2 - Approaching turn, 3 - Entered in turn, 4 - Turning inside turn
     
     def __str__(self):
         """
@@ -153,10 +179,15 @@ class Vehicle(pygame.sprite.Sprite):
             fourth quadrant.
 
         """
-        # Calculate the displacement along x and y axes due to width
+        # Calculate the displacement along x and y axes due to width, Minus here for only fourth quadrant
         self.front_x = self.x + self.size_x * 0.5 * math.cos(self.direction)
-        self.front_y = self.y - self.size_x * 0.5 * math.sin(self.direction)  # Minus here for only fourth quadrant
+        self.front_y = self.y - self.size_x * 0.5 * math.sin(self.direction)
     
+    def _calculate_tile_location(self, map):
+
+        self.location_tile = map.tile_location(self.x, self.y)
+        self.direction_tile = map.next_tile(self.location_tile, self.direction)
+
     def _rotate_image(self):
         """
         Rotates and scales the image and creates a rect.
@@ -179,12 +210,18 @@ class Vehicle(pygame.sprite.Sprite):
         scaled_image = pygame.transform.scale(self.image, (self.size_x, self.size_y))
 
         # Step 2: Rotate the scaled image based on the corrected direction angle
-        corrected_direction = math_utils.correct_radian(self.direction + math.pi)
-        self.rotated_image = pygame.transform.rotate(scaled_image, math.degrees(corrected_direction))
+        self.corrected_direction = math_utils.correct_radian(self.direction + math.pi)
+        self.rotated_image = pygame.transform.rotate(scaled_image, math.degrees(self.corrected_direction))
 
         # Step 3: Create a rect for the rotated image centered at the current (x, y) position
         self.rotated_rect = self.rotated_image.get_rect(center=(self.x, self.y))
 
+    def _tile_coincidence(self, tile_id):
+
+        if self.location_tile == tile_id or self.direction_tile == tile_id:
+            return True
+
+        return False
     # ==============================================================
     # SECTION: Braking functions
     # Description: Functions related to braking and speed control
@@ -242,8 +279,6 @@ class Vehicle(pygame.sprite.Sprite):
             8. Otherwise, return False.
 
         """
-        # Step 1: Set braking to False
-        self.braking = False
 
         # Step 2: Update the distance and id of the closest stop
         self.update_stops(map)
@@ -313,22 +348,20 @@ class Vehicle(pygame.sprite.Sprite):
     # rotation around map points.
     # ==============================================================
 
-    def select_turn(self, turn_id):
-        """
-        Selects a turn for the vehicle to navigate.
+    def select_turn(self, map, entered_turns):
+        # Requires for a self.skipturn reset when not detecting turn
 
-        This function sets the specified turn_id as the turning_turn_id attribute,
-        indicating the selected turn for the vehicle to navigate.
+        # Decide if the vehicle turns or not
+        skip_turn = random.randint(0, 1)
 
-        Parameters:
-            turn_id (int): The identifier of the selected turn.
+        # Check for skippable turns
+        skippable_turns = [turn_id for turn_id in entered_turns if map.turns[turn_id].can_skip == "True"]
+        if len(skippable_turns) != 0 and skip_turn == 1:
+            self.skipturn = True
 
-        Updates:
-            self.turning_turn_id (int): The identifier of the selected turn.
-
-        """
-        # Set the specified turn_id as the turning_turn_id attribute
-        self.turning_turn_id = turn_id
+        if not self.skipturn:
+            # Select which turn to use if multiple options exist
+            self.turning_turn_id = random.choice(entered_turns)
     
     def detect_entering_in_turn(self, map, turn_id, debug=False):
         """
@@ -607,21 +640,317 @@ class Vehicle(pygame.sprite.Sprite):
             vehicles_list (list): List of Vehicle objects.
 
         Returns:
-            None
+            Number of new collisions
         """
+        old_colliding_vehicles = self.colliding_vehicles
         self.colliding_vehicles = []
 
         for vehicle in vehicles_list:
-            if vehicle != self:
+            if vehicle != self and self._tile_coincidence(vehicle.location_tile):
                 if self.colliding_with_vehicle(vehicle):
                     self.colliding_vehicles.append(vehicle.id)
+        
+        return math_utils.find_new_numbers(old_colliding_vehicles, self.colliding_vehicles)[0]
+
+    def rotate_rect(self, rect, angle, pivot):
+        # Translate the rectangle so that the pivot becomes the origin
+        translated_rect = rect.move(-pivot[0], -pivot[1])
+
+        # Rotate the translated rectangle
+        rotated_rect = translated_rect.copy()
+        rotated_rect.width = int(translated_rect.width * math.cos(angle) - translated_rect.height * math.sin(angle))
+        rotated_rect.height = int(translated_rect.width * math.sin(angle) + translated_rect.height * math.cos(angle))
+
+        # Translate the rotated rectangle back to its original position
+        final_rect = rotated_rect.move(pivot[0], pivot[1])
+
+        return final_rect
+    
+    def detect_closest_vehicle(self, map, vehicles_list, debug):
+
+        # Check if the vehicle is on any turn
+        if self.turning:
+
+            # Reset skipturn in case is enabled
+            if self.collision_status == 0:
+                self.skipturn = False
+
+            #if debug:
+            #    print(f"1 Status: {self.collision_status}")
+
+            # State machine change
+            if self.collision_status == 2:
+                self.collision_status = 3
+            
+            elif self.collision_status == 3:
+                self.collision_status = 4
+            
+            elif self.collision_status != 4:
+                pass
+                #if debug:
+                #    print("Sequence out of order")
+
+            # Obtain the turn itself that we are dealing with
+            turn = map.turns[self.turning_turn_id]
+
+            # First segment gone
+            self.collision_segment1_x = self.x
+            self.collision_segment1_y = self.y
+
+            # Calculate turning angle and direction
+            turn_to_vehicle_angle = math_utils.angle_point_to_point(turn.x, turn.y, self.collision_segment1_x, self.collision_segment1_y)
+            self.collision_turning_direction, tangential_vector = math_utils.movement_rotational_direction(turn_to_vehicle_angle, self.corrected_direction)
+            self.collision_turn_angle = turn.angle_left(turn_to_vehicle_angle, self.collision_turning_direction)
+
+            # Calculating the distance to the center of the turn
+            turn_radius_distance = math_utils.distance_point_to_point(self.collision_segment1_x, self.collision_segment1_y, turn.x, turn.y)
+
+            # Total distance for going to the end of the turn
+            turn_arc_distance = self.collision_turn_angle * turn_radius_distance
+
+            # Remaining distance after the turn is done
+            remaining_distance = math_utils.meters_to_pixels(OBSERVING_DISTANCE) + self.size_x
+
+            #if debug:
+            #    print(f"Remaining distance: {remaining_distance}, turn arc distance: {turn_arc_distance}, turn to vehicle angle: {turn_to_vehicle_angle}, collision turn angle {self.collision_turn_angle}, direction: {self.collision_turning_direction}")
+
+            # Check that there will be more distance for outisde the turn
+            if turn_arc_distance < remaining_distance:
+                
+                # Calculating the new remaining distance
+                remaining_distance -= turn_arc_distance
+
+                #if debug:
+                #    print(f"Relative x: {self.collision_segment1_x - turn.x}, relative y: {turn.y - self.collision_segment1_y}")
+
+                # Calculating new turning point
+                self.collision_turn_x, self.collision_turn_y = math_utils.rotate_point(self.collision_segment1_x - turn.x, turn.y - self.collision_segment1_y, self.collision_turn_angle, self.collision_turning_direction)
+
+                # Recentering the collision point
+                self.collision_turn_x = self.collision_turn_x + turn.x
+                self.collision_turn_y = - self.collision_turn_y + turn.y
+
+                # Getting the corrected angle for the new segment
+                if self.collision_turning_direction == "Clockwise":
+                    segment_2_angle_change = self.corrected_direction - self.collision_turn_angle
+                
+                elif self.collision_turning_direction == "Counterclockwise":
+                    segment_2_angle_change = self.corrected_direction + self.collision_turn_angle
+                
+                else:
+                        segment_2_angle_change = 0
+
+                # Getting the second point of the second segment
+                self.collision_segment2_x = self.collision_turn_x - (remaining_distance) * math.cos(segment_2_angle_change)
+                self.collision_segment2_y = self.collision_turn_y + (remaining_distance) * math.sin(segment_2_angle_change)
+
+            else:
+
+                # Second segment gone
+                self.collision_turn_x = self.x
+                self.collision_turn_y = self.y
+                self.collision_segment2_x = self.x
+                self.collision_segment2_y = self.y
+
+                # Remaining distance is 0
+                remaining_distance = 0
+        
+        # Check if any turn collides with our collision line and that turn is mandatory to be turned
+        else:
+
+            # If in state 4 and not in turn, reset turning turn id
+            if self.collision_status == 4:
+                self.turning_turn_id = -1
+
+            # Searching for next turn to collide with
+            if self.collision_status == 0:
+
+                # Create line in front of car
+                self.collision_x = self.x - (math_utils.meters_to_pixels(OBSERVING_DISTANCE) + self.size_x) * math.cos(self.corrected_direction)
+                self.collision_y = self.y + (math_utils.meters_to_pixels(OBSERVING_DISTANCE) + self.size_x) * math.sin(self.corrected_direction)
+
+                # Check what turns the vehicle collided with
+                collided_turns_ids, collided_turn_points = map.closest_collision_turns(self)
+
+                #if debug:
+                #    print(f"Collided turn ids: {collided_turns_ids}, collided turn positions: {collided_turn_points}")
+
+                # Make sure there is some turns that it collided with
+                if len(collided_turns_ids) != 0:
+
+                    # From the available turns select one
+                    self.select_turn(map, collided_turns_ids)
+
+                    # If selected any turn
+                    if self.turning_turn_id != -1:
+
+                        # Save the collision turn point
+                        self.collision_turn_point = collided_turn_points[collided_turns_ids.index(self.turning_turn_id)]
+                
+                else:
+
+                    # Reset skipturn just in case it got enabled
+                    self.skipturn = False
+                
+                #if debug:
+                #    print(f"Collided turn id: {self.turning_turn_id}")
+
+            # Create first collision segment
+            if self.turning_turn_id != -1:
+
+                #if debug:
+                #    print(f"2 Status: {self.collision_status}")
+                
+                # State machine change
+                if self.collision_status == 0 or self.collision_status == 4:
+                    self.collision_status = 1
+                
+                elif self.collision_status == 1:
+                    self.collision_status = 2
+
+                elif self.collision_status != 2:
+                    pass
+                    #if debug:
+                    #    print("Sequence out of order")
+
+                # Calculating the collision points
+                if self.collision_status == 1:
+                    self.collision_segment1_x = self.collision_turn_point[0]
+                    self.collision_segment1_y = self.collision_turn_point[1]
+
+                # Calculating the remaining distance to spare
+                remaining_distance = math_utils.meters_to_pixels(OBSERVING_DISTANCE) + self.size_x - math_utils.distance_point_to_point(self.x, self.y, self.collision_segment1_x, self.collision_segment1_y)
+                
+                # Obtain the turn itself that we are dealing with
+                turn = map.turns[self.turning_turn_id]
+
+                # Calculating the distance to the center of the turn
+                turn_radius_distance = math_utils.distance_point_to_point(self.collision_segment1_x, self.collision_segment1_y, turn.x, turn.y)
+
+                # Calculating the turning direction
+                turn_to_collision_angle = math_utils.angle_point_to_point(turn.x, turn.y, self.collision_segment1_x, self.collision_segment1_y)
+                self.collision_turning_direction, tangential_vector = math_utils.movement_rotational_direction(turn_to_collision_angle, self.corrected_direction)
+
+                # Total distance for going all around the turn
+                turn_arc_distance = turn.turn_span * turn_radius_distance
+
+                #if debug:
+                #    print(f"Remaining distance: {remaining_distance}, turn arc distance: {turn_arc_distance}, turn to collision angle: {turn_to_collision_angle}, direction: {self.collision_turning_direction}")
+
+                # Check that there will be more distance for outisde the turn
+                if turn_arc_distance < remaining_distance:
+
+                    # Set the collision turn angle to the maximum
+                    self.collision_turn_angle = turn.turn_span
+
+                    # Reduce the remaining distance
+                    remaining_distance -= turn_arc_distance
+                
+                    # Calculating new turning point
+                    self.collision_turn_x, self.collision_turn_y = math_utils.rotate_point(self.collision_segment1_x - turn.x, turn.y - self.collision_segment1_y, self.collision_turn_angle, self.collision_turning_direction) # math_utils bruh
+
+                    # Recentering the collision point
+                    self.collision_turn_x = self.collision_turn_x + turn.x
+                    self.collision_turn_y = -self.collision_turn_y + turn.y
+
+                    # Getting the corrected angle for the new segment
+                    if self.collision_turning_direction == "Clockwise":
+                        segment_2_angle_change = self.corrected_direction - self.collision_turn_angle
+                    
+                    elif self.collision_turning_direction == "Counterclockwise":
+                        segment_2_angle_change = self.corrected_direction + self.collision_turn_angle
+
+                    else:
+                        segment_2_angle_change = 0
+
+                    # Getting the second point of the second segment
+                    self.collision_segment2_x = self.collision_turn_x - (remaining_distance) * math.cos(segment_2_angle_change)
+                    self.collision_segment2_y = self.collision_turn_y + (remaining_distance) * math.sin(segment_2_angle_change)
+
+                # Remaining distance ends in the turn
+                else:
+                    
+                    # Calculate the collision turn angle
+                    self.collision_turn_angle = remaining_distance / turn_radius_distance
+
+                    # Remaining distance is 0, it finishes on the turn
+                    remaining_distance = 0
+
+                    # Second segment gone
+                    self.collision_turn_x = self.x
+                    self.collision_turn_y = self.y
+                    self.collision_segment2_x = self.x
+                    self.collision_segment2_y = self.y
+                
+                #if debug:
+                #    print(f"Remaining distance: {remaining_distance}, turning direction: {self.collision_turning_direction}, turn arc distance: {turn_arc_distance}, turn angle: {self.collision_turn_angle}rad")
+
+            else:
+
+                #if debug:
+                #    print(f"3 Status: {self.collision_status}")
+
+                # State machine change
+                if self.collision_status == 4:
+                    self.collision_status = 0
+                
+                elif self.collision_status != 0:
+                    pass
+                    #if debug:
+                    #    print("Sequence out of order")
+
+                # First segment gone
+                self.collision_segment1_x = self.x
+                self.collision_segment1_y = self.y
+
+                # Turn angle is 0
+                self.collision_turn_angle = 0
+
+                # Direction is tangential
+                self.collision_turning_direction = "Tangential"
+
+                # Second segment gone
+                self.collision_turn_x = self.x
+                self.collision_turn_y = self.y
+                self.collision_segment2_x = self.x
+                self.collision_segment2_y = self.y
+
+                # Remaining distance is 0
+                remaining_distance = 0
+
+        # Check collisions with the rect, and get the closest vehicle
+        smallest_distance = -1
+        closest_vehicle = None
+        for vehicle in vehicles_list:
+
+            if vehicle != self and self._tile_coincidence(vehicle.location_tile):
+                if math_utils.pixels_to_meters(math_utils.distance_point_to_segment(vehicle.x, -vehicle.y, self.front_x, -self.front_y, self.collision_x, -self.collision_y)) <= OBSERVING_DETECTION_RANGE:
+                    
+                    # Calculate distance to detected vehicle
+                    new_distance = math_utils.pixels_to_meters(math_utils.distance_point_to_point(self.x, self.y, vehicle.x, vehicle.y))
+                    if smallest_distance == -1 or new_distance < smallest_distance:
+                        smallest_distance = new_distance
+                        closest_vehicle = vehicle
+        
+        if debug:
+            if closest_vehicle != None: closest_vehicle.trigger_detected()
+        
+        if closest_vehicle != None:
+            self.closest_vehicle_distance = smallest_distance
+            return (closest_vehicle.speed, smallest_distance)
+
+        else:
+            return (-1, -1)
+
+        # Calculate the distance to that car, taking into account that
+        # if it is inside a turn, calculate that distance as well
 
     # ==============================================================
     # SECTION: Moving functions
     # Description: Functions for moving the vehicle around the map.
     # ==============================================================
 
-    def move(self, time_delta):
+    def move(self, map, time_delta):
         """
         Moves the vehicle based on its speed and direction.
 
@@ -650,6 +979,9 @@ class Vehicle(pygame.sprite.Sprite):
 
         # Step 4: Recalculate the front position of the vehicle
         self._calculate_front_position()
+
+        # Step 5: Recaulculate tile location
+        self._calculate_tile_location(map)
 
     def render(self, screen, map, debug=False):
         """
@@ -702,8 +1034,74 @@ class Vehicle(pygame.sprite.Sprite):
         screen.blit(text_4, text_4_rect)
         """
 
+        if self.debug_detected:
+
+            # Render rectangle over vehicle to indicate detection
+            pygame.draw.rect(screen, (255, 0, 0), self.rotated_rect, 2)
+
+        # Generic debugging information
+        if debug:
+
+            # Render rectangle over vehicle to indicate selection
+            pygame.draw.rect(screen, (0, 255, 0), self.rotated_rect, 2)
+
+            # Render visual collision rect
+            #points = math_utils.draw_rotated_rect(self.rotated_collision_surface, self.direction, self.rotated_collision_rect)
+            #pygame.draw.lines(screen, (255, 255, 0), True, points, 2)
+
+            # Render collision lines
+            if self.turning_turn_id == -1:
+                pygame.draw.line(screen, (0, 0, 255), (int(self.collision_x), int(self.collision_y)), (int(self.front_x), int(self.front_y)))
+            
+            else:
+
+                # Render first segment
+                pygame.draw.line(screen, (0, 0, 255), (int(self.collision_segment1_x), int(self.collision_segment1_y)), (int(self.x), int(self.y)))
+
+                # Render arc
+                turn = map.turns[self.turning_turn_id]
+                radius = math_utils.distance_point_to_point(self.collision_segment1_x, self.collision_segment1_y, turn.x, turn.y)
+                start_angle = math_utils.angle_point_to_point(turn.x, turn.y, self.collision_segment1_x, self.collision_segment1_y)
+                rect = pygame.Rect(turn.x - radius, turn.y - radius, 2 * radius, 2 * radius)
+
+                if self.collision_turning_direction == "Clockwise":
+                    first_angle = start_angle - self.collision_turn_angle
+                    second_angle = start_angle
+                    pygame.draw.arc(screen, (0, 0, 255), rect, first_angle, second_angle, 1)
+                
+                elif self.collision_turning_direction == "Counterclockwise":
+                    first_angle = start_angle + self.collision_turn_angle
+                    second_angle = start_angle
+                    pygame.draw.arc(screen, (0, 0, 255), rect, second_angle, first_angle, 1)
+
+                # Render second segment
+                pygame.draw.line(screen, (0, 0, 255), (int(self.collision_turn_x), int(self.collision_turn_y)), (int(self.collision_segment2_x), int(self.collision_segment2_y)))
+
+            # Render location tile as red
+            map.render_tile(self.location_tile, (255, 0, 0), screen)
+
+            # Render direction tile as blue
+            map.render_tile(self.direction_tile, (0, 0, 255), screen)
+
+            # Render turn collision point
+            if self.turning_turn_id != -1:
+                pass
+
+                # Closest turn collision point
+                #pygame.draw.circle(screen, (0, 255, 255), (int(self.collision_segment1_x), int(self.collision_segment1_y)), 2)
+
+                #if debug:
+                #    print(f"x: {self.collision_turn_x}, y: {self.collision_turn_y}")
+
+                # Furthest turn collition point
+                #pygame.draw.circle(screen, (255, 0, 255), (int(self.collision_turn_x), int(self.collision_turn_y)), 2)
+
+                #print(f"Collision turn x: {self.collision_turn_x}, collision turn y: {self.collision_turn_y}")
+
+            #print(f"Location tile: {self.location_tile}, direction tile: {self.direction_tile}")
+
         # Debugging information for turning
-        if debug and self.turning:
+        if debug and self.turning and self.turning_turn_id != -1:
             turn = map.turns[self.turning_turn_id]
             if self.turning_direction == "Clockwise":
                 color = (0, 0, 255)
@@ -808,3 +1206,6 @@ class Vehicle(pygame.sprite.Sprite):
         """
         # Set the direction of the vehicle to the specified angle
         self.direction = direction
+
+    def trigger_detected(self):
+        self.debug_detected = True

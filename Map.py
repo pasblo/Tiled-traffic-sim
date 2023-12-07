@@ -76,6 +76,8 @@ class Turn:
         self.min_distance = specs["min-distance"]
         self.max_distance = specs["max-distance"]
         self.can_skip = specs["can-skip"]
+        self.calculate_border_lines()
+        self.calculate_turn_span()
     
     def get_json_dictionary(self):
         """
@@ -97,6 +99,30 @@ class Turn:
             "max-distance": self.max_distance,
             "can-skip": self.can_skip
         }
+    
+    def calculate_border_lines(self):
+
+        self.first_angle_segment, self.second_angle_segment = math_utils.semicircle_lines(self.x, self.y, self.first_angle, self.second_angle, self.min_distance, self.max_distance)
+    
+    def calculate_turn_span(self):
+        
+        if self.second_angle - self.first_angle < 0:
+            self.turn_span = self.second_angle - self.first_angle + math.pi * 2
+        
+        else:
+            self.turn_span = self.second_angle - self.first_angle
+    
+    def angle_left(self, angle, direction):
+
+        going_to_first = math_utils.closest_angular_distance(self.first_angle, angle, direction)
+
+        if going_to_first > 0:
+            return going_to_first
+        
+        going_to_second = math_utils.closest_angular_distance(self.second_angle, angle, direction)
+
+        return going_to_second
+
 
 class Spawn_Point:
     """
@@ -273,14 +299,18 @@ class Traffic_Light:
             # Change to green
             self.color = self.GREEN
             self.time_passed_since_last_change = 0
+
         elif self.color == self.GREEN and self.time_passed_since_last_change >= (self.time_green * 1000000000):
             # Change to amber
             self.color = self.AMBER
             self.time_passed_since_last_change = 0
+
         elif self.color == self.AMBER and self.time_passed_since_last_change >= (self.time_amber * 1000000000):
             # Change to red
             self.color = self.RED
             self.time_passed_since_last_change = 0
+
+TURN_COLLISION_ERROR = 1
 
 class Map:
     def __init__(self, name):
@@ -302,6 +332,13 @@ class Map:
                 self.json = json.load(file)
         except Exception as e:
             pass
+
+        # Store the tiles data [[amount_of_stops, amount_of_turns]]
+        self.tile_data = self.json.get("tile-data", [])
+            
+        # Store the size of each tile
+        self.tile_size = self.json.get("tile-size", 0)
+        self.tile_row_count = self.json.get("tile-row-count", 0)
 
         # Mobility map data
         try:
@@ -333,6 +370,8 @@ class Map:
             self.despawns = [Despawn_Line(specs) for specs in self.despawns_specs]
         except Exception as e:
             self.despawns = []
+    
+        self.vehicles_at_spawn_tiles = []
 
     # ==============================================================
     # SECTION: Internal functions
@@ -374,6 +413,17 @@ class Map:
 
         for spawn in self.spawns:
 
+            # Checking that the tile where this spawn is located is not occupied
+            spawn_busy = False
+            for occupied_tile in self.vehicles_at_spawn_tiles:
+                if self.tile_contains_specific(occupied_tile, "spawn", spawn.id):
+                    spawn_busy = True
+                    break
+            
+            # Skipping the spawn if the tile is occupied
+            if spawn_busy:
+                continue
+
             # Calculate the probability of spawning based on time_delta
             spawn_probability = spawn.probability_per_second * (time_delta / 1000000000)
             
@@ -393,6 +443,22 @@ class Map:
         # Update the state of all traffic lights
         for traffic_light in self.traffic_lights:
             traffic_light.tick(time_delta)
+        
+        # Update the tiles ids of vehicles on them by resetting the list
+        self.vehicles_at_spawn_tiles = []
+    
+    def render_tile(self, tile_id, color, screen):
+
+        # Get coordinates for the tile
+        row = tile_id // self.tile_row_count
+        col = tile_id % self.tile_row_count
+        tile_x = col * self.tile_size
+        tile_y = row * self.tile_size
+
+        # Create and render the tile as a rect with only border
+        transparent_border = pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
+        pygame.draw.rect(transparent_border, color, (0, 0, self.tile_size, self.tile_size), 2)  # 2 is the thickness of the border
+        screen.blit(transparent_border, (tile_x, tile_y))
 
     def render(self, screen):
         """
@@ -416,7 +482,7 @@ class Map:
             pygame.draw.line(screen, color, (stop.start_x, stop.start_y), (stop.end_x, stop.end_y), 2)
 
         # Draw temporal turning points
-        for turn in self.turns:
+        """for turn in self.turns:
             # Draw outer and inner arcs
             rect_outer = pygame.Rect(turn.x - turn.max_distance, turn.y - turn.max_distance,
                                     2 * turn.max_distance, 2 * turn.max_distance)
@@ -433,7 +499,7 @@ class Map:
 
             inner_end = math_utils.get_point_on_circle(turn.x, turn.y, turn.min_distance, turn.second_angle)
             outer_end = math_utils.get_point_on_circle(turn.x, turn.y, turn.max_distance, turn.second_angle)
-            pygame.draw.line(screen, (0, 0, 255), outer_end, inner_end, 2)
+            pygame.draw.line(screen, (0, 0, 255), outer_end, inner_end, 2)"""
 
         # Draw spawn points
         for spawn in self.spawns:
@@ -476,6 +542,10 @@ class Map:
 
         for stop in self.stops:
 
+            # Check if stop is on same tile as vehicle or in next tile
+            if not self.tile_contains_specific(vehicle.location_tile, "stop", stop.id) and not self.tile_contains_specific(vehicle.direction_tile, "stop", stop.id):
+                continue
+
             # Check if stop is in sight
             angle_point1 = math_utils.angle_point_to_point(vehicle.front_x, vehicle.front_y, stop.start_x, stop.start_y)
             angle_point2 = math_utils.angle_point_to_point(vehicle.front_x, vehicle.front_y, stop.end_x, stop.end_y)
@@ -517,6 +587,11 @@ class Map:
         crossed_turn_ids = []
 
         for turn in self.turns:
+
+            # Checking if the turn is on the same tile as the vehicle
+            if not self.tile_contains_specific(vehicle.location_tile, "turn", turn.id):
+                continue
+
             # Calculate the distance to the turning point
             car_turn_distance = math_utils.distance_point_to_point(turn.x, turn.y, vehicle.x, vehicle.y)
 
@@ -534,6 +609,58 @@ class Map:
             crossed_turn_ids.append(turn.id)
 
         return crossed_turn_ids
+    
+    def collision_turns(self, vehicle):
+
+        first_angle_segment_coordinate = None
+        second_angle_segment_coordinate = None
+        
+        angle_segment_coordinates = []
+        turn_ids = []
+
+        for turn in self.turns:
+
+            # Checking if the turn is on the same tile as the vehicle
+            if not self.tile_contains_specific(vehicle.location_tile, "turn", turn.id) and not self.tile_contains_specific(vehicle.direction_tile, "turn", turn.id):
+                continue
+            
+            # Calculating the collision points with the turn segments
+            first_angle_segment_coordinate = math_utils.find_intersection(turn.first_angle_segment[0], turn.first_angle_segment[1], (vehicle.x, vehicle.y), (vehicle.collision_x, vehicle.collision_y))
+            second_angle_segment_coordinate = math_utils.find_intersection(turn.second_angle_segment[0], turn.second_angle_segment[1], (vehicle.x, vehicle.y), (vehicle.collision_x, vehicle.collision_y))
+
+            if first_angle_segment_coordinate != None:
+                turn_ids.append(turn.id)
+                angle_segment_coordinates.append(first_angle_segment_coordinate)
+            
+            if second_angle_segment_coordinate != None:
+                turn_ids.append(turn.id)
+                angle_segment_coordinates.append(second_angle_segment_coordinate)
+        
+        return (turn_ids, angle_segment_coordinates)
+
+    def closest_collision_turns(self, vehicle):
+
+        # Get all turns that collide with the first line in sight
+        collision_turns = self.collision_turns(vehicle)
+
+        if len(collision_turns[0]) == 0:
+            return collision_turns
+
+        collision_turns_dict = dict(zip(collision_turns[1], collision_turns[0]))
+
+        # Calculate the distances from all points to the vehicle
+        collision_turns_distances = [math_utils.distance_point_to_point(vehicle.x, vehicle.y, collision_turn[0], collision_turn[1]) for collision_turn in collision_turns[1]]
+
+        # Select only the minimun distance
+        min_distance = min(collision_turns_distances)
+
+        # Select a subset of points that are very close to each other
+        closest_points = [point for point, distance in zip(collision_turns[1], collision_turns_distances) if abs(distance - min_distance) < TURN_COLLISION_ERROR]
+
+        # Select the matching ids to the subset of points extracted from the original array
+        closest_ids = [collision_turns_dict[point] for point in closest_points]
+
+        return (closest_ids, closest_points)
 
     def entry_turn(self, vehicle, turn_id, turning_direction, debug=False):
         """
@@ -561,8 +688,8 @@ class Map:
         turn_span = math_utils.correct_radian(turn.second_angle - turn.first_angle)
 
         # Print debug information if requested
-        if debug:
-            print(f"Turn angle {car_turn_angle}, dist_first {distance_to_first_angle}, dist_second {distance_to_second_angle}, turning_direction {turning_direction}, first angle {turn.first_angle}, second angle {turn.second_angle}, turn span {turn_span}")
+        #if debug:
+        #    print(f"Turn angle {car_turn_angle}, dist_first {distance_to_first_angle}, dist_second {distance_to_second_angle}, turning_direction {turning_direction}, first angle {turn.first_angle}, second angle {turn.second_angle}, turn span {turn_span}")
 
         # Checking if the angle is in the correct range
         if abs(distance_to_first_angle) > math.radians(TURN_ANGLE_ERROR) and abs(distance_to_second_angle) > math.radians(TURN_ANGLE_ERROR):
@@ -607,3 +734,132 @@ class Map:
 
         return False
     
+    # ==============================================================
+    # SECTION: Optimization functions
+    # Description: Functions that are intended to optimize the functionality of the game
+    # ==============================================================
+    
+    def tile_location(self, x, y):
+
+        x_tile = math.floor(x / self.tile_size)
+
+        # Spawn bug
+        if x_tile >= self.tile_row_count:
+            x_tile = self.tile_row_count - 1
+
+        y_tile = math.floor(y / self.tile_size)
+
+        # Spawn bug
+        if y_tile >= self.tile_row_count:
+            y_tile = self.tile_row_count - 1
+
+        tile_id = x_tile + y_tile * self.tile_row_count
+
+        # Adding to the list of vehicles on tiles that this tile is occupied
+        if self.tile_contains(tile_id, "spawn") and tile_id not in self.vehicles_at_spawn_tiles:
+            self.vehicles_at_spawn_tiles.append(tile_id)
+
+        return tile_id
+    
+    def next_tile(self, location_tile, direction):
+
+        # Looking mostly right
+        if (direction >= 0 and direction <= math.pi / 4) or (direction < math.pi * 2 and direction > math.pi * 7/4):
+            if ((location_tile + 1) % self.tile_row_count) != 0:
+                return location_tile + 1
+            
+            else:
+                return -1
+        
+        # Looking mostly up
+        elif direction > math.pi / 4 and direction <= math.pi * 3/4:
+            if location_tile > self.tile_row_count:
+                return location_tile - self.tile_row_count
+
+            else:
+                return -1
+        
+        # Looking mostly left
+        elif direction > math.pi * 3/4 and direction <= math.pi * 5/4:
+            if (location_tile % self.tile_row_count) != 0:
+                return location_tile - 1
+            
+            else:
+                return -1
+        
+        # Looking mostly down
+        elif direction > math.pi * 5/4 and direction <= math.pi * 7/4:
+            if (location_tile - (self.tile_row_count * (self.tile_row_count - 1))) < 0:
+                return location_tile + self.tile_row_count
+
+            else:
+                return -1
+    
+    def tile_contains(self, tile_id, element):
+
+        # If the tile id is valid
+        if tile_id < 0:
+            return False
+
+        # If we have the same stop id to start and finish is because we don't have any
+        if element == "stop":
+            return self.tile_data[tile_id][0][0] - self.tile_data[tile_id][0][1] != 0
+        
+        elif element == "turn":
+            return self.tile_data[tile_id][1][0] - self.tile_data[tile_id][1][1] != 0
+        
+        elif element == "spawn":
+            return self.tile_data[tile_id][2][0] - self.tile_data[tile_id][2][1] != 0
+
+        return False
+
+    def tile_get_coincidences(self, tile_id, element):
+
+        # If the tile id is valid
+        if tile_id < 0:
+            return False
+
+        # Returning the amount of coincidences
+        if element == "stop":
+            return self.tile_data[tile_id][0][0] - self.tile_data[tile_id][0][1]
+        
+        elif element == "turn":
+            return self.tile_data[tile_id][1][0] - self.tile_data[tile_id][1][1]
+        
+        elif element == "spawn":
+            return self.tile_data[tile_id][2][0] - self.tile_data[tile_id][2][1]
+
+        return False
+        
+    def tile_contains_specific(self, tile_id, element, element_id):
+
+        # If the tile id is valid
+        if tile_id < 0:
+            return False
+        
+        # If the tile contains any of the elements
+        if not self.tile_contains(tile_id, element):
+            return False
+        
+        if element == "stop":
+            element_start_id = self.tile_data[tile_id][0][0]
+            element_end_id = self.tile_data[tile_id][0][1]
+
+            if element_start_id <= element_id < element_end_id and element_id != element_end_id:
+                return True
+        
+        elif element == "turn":
+            element_start_id = self.tile_data[tile_id][1][0]
+            element_end_id = self.tile_data[tile_id][1][1]
+
+            if element_start_id <= element_id < element_end_id and element_id != element_end_id:
+                return True
+        
+        elif element == "spawn":
+            element_start_id = self.tile_data[tile_id][2][0]
+            element_end_id = self.tile_data[tile_id][2][1]
+
+            if element_start_id <= element_id < element_end_id and element_id != element_end_id:
+                return True
+
+        return False

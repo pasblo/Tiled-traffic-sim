@@ -10,6 +10,8 @@ import pygame
 going_to_break = True
 going_to_turn = True
 
+SAFE_DISTANCE = 1
+
 def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
     """
     Autonomously move vehicles, handling turning and stopping as necessary.
@@ -24,6 +26,10 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
         set_vehicle (int): The ID of the vehicle for which debugging information is printed.
     """
 
+    # Debug reset
+    for vehicle in vehicle_list:
+        vehicle.debug_detected = False
+
     # Iterate through all vehicles
     for vehicle in vehicle_list:
 
@@ -34,51 +40,46 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
         started_turning = False
         ended_turning = False
         new_turn = False
-        detected_turns_ids = map.crossed_turns(vehicle)
 
         entered_turns = []
         skippable_turns = []
 
-        # Check if the vehicle exited the turn it was navigating
-        if not last_turn_id in detected_turns_ids and len(detected_turns_ids) != 0:
+        # Checking if the tile contains a turn and that the vehicle is not stopped
+        check_for_turns = map.tile_contains(vehicle.location_tile, "turn") and vehicle.speed != 0
+        if check_for_turns:
 
-            # Filter turns that the vehicle has just entered
-            for turn_id in detected_turns_ids:
-                if vehicle.detect_entering_in_turn(map, turn_id, debug=(vehicle.id == set_vehicle)):
-                    entered_turns.append(turn_id)
+            detected_turns_ids = map.crossed_turns(vehicle)
 
-            # Decide whether to turn or not and which turn to use
-            if len(entered_turns) != 0:
+            # Check if the vehicle exited the turn it was navigating
+            if not last_turn_id in detected_turns_ids and len(detected_turns_ids) != 0:
 
-                # Decide if the vehicle turns or not
-                skip_turn = random.randint(0, 1)
+                # Filter turns that the vehicle has just entered
+                for turn_id in detected_turns_ids:
+                    if vehicle.detect_entering_in_turn(map, turn_id, debug = (vehicle.id == set_vehicle)):
+                        entered_turns.append(turn_id)
 
-                # Check for skippable turns
-                skippable_turns = [turn_id for turn_id in entered_turns if map.turns[turn_id].can_skip == "True"]
-                if len(skippable_turns) != 0 and skip_turn == 1:
+                # Decide whether to turn or not and which turn to use
+                if vehicle.skipturn:
                     vehicle.skippingturn = True
 
-                # Select which turn to use if multiple options exist
-                vehicle.select_turn(random.choice(entered_turns))
+            # Detect start turning and end turning flags
+            if len(detected_turns_ids) != 0 and (len(entered_turns) != 0 or last_turn_id in detected_turns_ids) and going_to_turn:
 
-        # Detect start turning and end turning flags
-        if len(detected_turns_ids) != 0 and (len(entered_turns) != 0 or last_turn_id in detected_turns_ids) and going_to_turn:
+                new_turn = True
 
-            new_turn = True
+                # Just started turning
+                if not last_turn:
+                    started_turning = True
 
-            # Just started turning
-            if not last_turn:
-                started_turning = True
+            else:
 
-        else:
-
-            # Just finished turning
-            if last_turn:
-                ended_turning = True
+                # Just finished turning
+                if last_turn:
+                    ended_turning = True
 
         # Debug
-        if vehicle.id == set_vehicle:
-            print(f"Vehicle {vehicle.id} last turning: {last_turn}, detected turns {detected_turns_ids}, entered_turns {entered_turns}, skippable turns {skippable_turns}, chosen turn {vehicle.turning_turn_id}, started turning {started_turning}, ended turning {ended_turning}, skipped turning {vehicle.skippingturn}")
+        #if vehicle.id == set_vehicle:
+        #    print(f"Vehicle {vehicle.id} last turning: {last_turn}, detected turns {detected_turns_ids}, entered_turns {entered_turns}, skippable turns {skippable_turns}, chosen turn {vehicle.turning_turn_id}, started turning {started_turning}, ended turning {ended_turning}, skipped turning {vehicle.skippingturn}")
 
         # Rotate function
         if (new_turn or ended_turning) and not vehicle.skippingturn:
@@ -89,22 +90,50 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
             vehicle.turning = True
 
         # Reset the skipping turn state after not detecting any turns
-        if len(detected_turns_ids) == 0:
+        if check_for_turns and len(detected_turns_ids) == 0:
             vehicle.skippingturn = False
+        
+        # Set braking to false
+        vehicle.braking = False
 
-        # Check for brakes, avoid braking while turning
-        if vehicle.detect_break_line(map) and going_to_break and ((not new_turn and not ended_turning) or vehicle.skippingturn):
-            vehicle.brake(time_delta)
+        # Checking if the tile the vehicle is in or the next one contains a stop
+        if map.tile_contains(vehicle.location_tile, "stop") or map.tile_contains(vehicle.direction_tile, "stop"):# and closest_stop_distance < closest_vehicle_distance:
+
+            # Check for brakes, avoid braking while turning
+            if vehicle.detect_break_line(map) and going_to_break and ((not new_turn and not ended_turning) or vehicle.skippingturn):
+                vehicle.brake(time_delta)
+        
+        turn = map.turns[vehicle.turning_turn_id]
+
+        # Check if the vehicle is not braking already to a stop sign and if is not on a optional turn
+        if not vehicle.braking:# and abs(map.tile_get_coincidences(vehicle.location_tile, "turn")) <= 1:
+
+            # Detect for closest vehicle
+            closest_vehicle_speed, closest_vehicle_distance = vehicle.detect_closest_vehicle(map, vehicle_list, (vehicle.id == set_vehicle))
+
+            # Check for visual range
+            """braking_distance = vehicle.braking_distance_to_speed(closest_vehicle_speed)
+            if braking_distance + SAFE_DISTANCE <= closest_vehicle_distance:
+                if vehicle.speed >= closest_vehicle_speed:
+                    vehicle.brake(time_delta)"""
+        
+        #if vehicle.id == set_vehicle:
+            #print(f"Location tile id: {vehicle.location_tile}, direction tile id: {vehicle.direction_tile}")
+            #print(f"Closest vehicle speed: {closest_vehicle_speed}, closest vehicle distance: {closest_vehicle_distance}, closest stop distance: {closest_stop_distance}, braking vehicle {debug_vehicle_braking}, braking stop: {debug_stop_breaking}")
 
         # Increase acceleration
         vehicle.accelerate(time_delta)
 
         # Move the vehicle
-        vehicle.move(time_delta)
+        vehicle.move(map, time_delta)
 
 def check_collisions(vehicle_list):
+    new_collisions = 0
     for vehicle in vehicle_list:
-        vehicle.update_vehicle_collisions(vehicle_list)
+        new_collisions += vehicle.update_vehicle_collisions(vehicle_list)
+    
+    # Dividing new collisions in two cause the collision is registered by the two vehicles
+    return new_collisions / 2
     
 def render_vehicles(vehicle_list, screen, map, set_vehicle):
     """
@@ -117,9 +146,7 @@ def render_vehicles(vehicle_list, screen, map, set_vehicle):
         set_vehicle (int): The ID of the vehicle for which debugging information is displayed.
     """
     for vehicle in vehicle_list:
-        vehicle.render(screen, map, debug=(set_vehicle == vehicle.id))
-        if set_vehicle == vehicle.id:
-            pygame.draw.rect(screen, (0, 255, 0), vehicle.rotated_rect, 2)
+        vehicle.render(screen, map, debug = (set_vehicle == vehicle.id))
 
 def spawn_vehicles(map, time_delta, latest_vehicle_id):
     """
@@ -147,14 +174,14 @@ def spawn_vehicles(map, time_delta, latest_vehicle_id):
             # Check if this vehicle should spawn
             if vehicle_type_random <= vehicle["Spawning-rate"]:
                 vehicle_speed = vehicle["Max-speed"] * spawn.speed  # The spawn speed is a percentage of the max speed
-                new_vehicle = Vehicle.Vehicle(vehicle, {"id": latest_vehicle_id, "x": spawn.x, "y": spawn.y, "direction": spawn.direction, "speed": vehicle_speed})
+                new_vehicle = Vehicle.Vehicle(vehicle, {"id": latest_vehicle_id, "x": spawn.x, "y": spawn.y, "direction": spawn.direction, "speed": vehicle_speed}, map)
                 new_vehicles.append(new_vehicle)
                 latest_vehicle_id += 1
                 break
     
     return {"vehicles": new_vehicles, "new_id": latest_vehicle_id}
     
-def despawn_vehicles(map, vehicles_list):
+def despawn_vehicles(map, vehicles_list, map_size):
     """
     Remove vehicles from the map if they are in contact with a despawn line.
 
@@ -176,6 +203,10 @@ def despawn_vehicles(map, vehicles_list):
         for despawn in map.despawns:
             # Checking if the vehicle is colliding with any despawn line
             if vehicle.colliding_with_line(despawn.start_x, despawn.start_y, despawn.end_x, despawn.end_y):
+                vehicle_collides = True
+            
+            # Checking if the vehicle went out of the screen
+            if vehicle.x > map_size[0] + 10 or vehicle.x < 0 or vehicle.y > map_size[1] or vehicle.y < 0:
                 vehicle_collides = True
 
         if not vehicle_collides:

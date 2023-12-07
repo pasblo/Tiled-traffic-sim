@@ -5,6 +5,7 @@ All this meth is for pygame logic, with (0, 0) on the top left of the window
 """
 
 import math
+import pygame
 
 MAP_SCALE = 10 # x pixels = 1 meter
 
@@ -193,6 +194,34 @@ def distance_point_to_line(point_x, point_y, line_x1, line_y1, line_x2, line_y2)
     distance = numerator / denominator
     return distance
 
+def distance_point_to_segment(point_x, point_y, line_x1, line_y1, line_x2, line_y2):
+    """Calculates the shortest distance from a point to a line segment defined
+    by its start and end points in a two-dimensional space"""
+
+    # Calculate coefficients A, B, C for the equation of the line
+    A = line_y2 - line_y1
+    B = line_x1 - line_x2
+    C = (line_x2 - line_x1) * line_y1 + (line_y1 - line_y2) * line_x1
+
+    # Calculate the distance from the point to the line using the formula for perpendicular distance
+    #distance = abs(A * point_x + B * point_y + C) / math.sqrt(A**2 + B**2)
+
+    # Check if the perpendicular projection of the point onto the line segment lies within the segment
+    dot_product = (point_x - line_x1) * (line_x2 - line_x1) + (point_y - line_y1) * (line_y2 - line_y1)
+    squared_length = (line_x2 - line_x1)**2 + (line_y2 - line_y1)**2
+
+    # Calculate the parameter 't' for the projection onto the line segment
+    t = max(0, min(1, dot_product / squared_length))
+
+    # Calculate the coordinates of the perpendicular projection on the line segment
+    projection_x = line_x1 + t * (line_x2 - line_x1)
+    projection_y = line_y1 + t * (line_y2 - line_y1)
+
+    # Calculate the distance from the point to the line segment
+    distance_to_segment = math.sqrt((point_x - projection_x)**2 + (point_y - projection_y)**2)
+
+    return distance_to_segment
+
 def distance_point_to_point(point1_x, point1_y, point2_x, point2_y):
     """Calculate the distance between two points"""
     delta_x = point2_x - point1_x
@@ -260,10 +289,34 @@ def change_distance_without_angle_change(x1, y1, x2, y2, d_new):
 
     return x2_new, y2_new
 
-def rotate_point(x, y, angle):
-    """Helper function to rotate a point (x, y) around the origin"""
-    x_rotated = x * math.cos(angle) - y * math.sin(angle)
-    y_rotated = x * math.sin(angle) + y * math.cos(angle)
+import math
+
+def rotate_point(x, y, angle, direction = "Counterclockwise"): # Works properly
+    """
+    Helper function to rotate a point (x, y) around the origin.
+
+    Parameters:
+        x (float): x-coordinate of the point.
+        y (float): y-coordinate of the point.
+        angle (float): Angle of rotation in radians.
+        direction (str): Direction of rotation, "clockwise" or "counterclockwise".
+                        Default is "clockwise".
+
+    Returns:
+        tuple: Rotated coordinates (x_rotated, y_rotated).
+    """
+    if direction == "Clockwise":
+        x_rotated = x * math.cos(angle) + y * math.sin(angle)
+        y_rotated = -x * math.sin(angle) + y * math.cos(angle)
+        
+    elif direction == "Counterclockwise":
+        x_rotated = x * math.cos(angle) - y * math.sin(angle)
+        y_rotated = x * math.sin(angle) + y * math.cos(angle)
+    
+    else:
+        x_rotated = -1
+        y_rotated = -1
+
     return x_rotated, y_rotated
 
 # ==============================================================
@@ -296,6 +349,64 @@ def are_lines_intersecting(start1_x, start1_y, end1_x, end1_y, start2_x, start2_
     # Lines are intersecting if cross products have different signs
     return cross_product1 * cross_product2 > 0 and cross_product1 * cross_product3 > 0
 
+def find_intersection(seg1_start, seg1_end, seg2_start, seg2_end):
+    def orientation(p, q, r):
+        val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
+        if val == 0:
+            return 0  # Collinear
+        return 1 if val > 0 else 2  # Clockwise or counterclockwise
+
+    def on_segment(p, q, r):
+        return q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1])
+
+    o1 = orientation(seg1_start, seg1_end, seg2_start)
+    o2 = orientation(seg1_start, seg1_end, seg2_end)
+    o3 = orientation(seg2_start, seg2_end, seg1_start)
+    o4 = orientation(seg2_start, seg2_end, seg1_end)
+
+    if o1 != o2 and o3 != o4:
+        # Segments intersect
+        return (
+            ((seg1_start[0] * seg1_end[1] - seg1_start[1] * seg1_end[0]) * (seg2_start[0] - seg2_end[0]) -
+             (seg1_start[0] - seg1_end[0]) * (seg2_start[0] * seg2_end[1] - seg2_start[1] * seg2_end[0])) /
+            ((seg1_start[0] - seg1_end[0]) * (seg2_start[1] - seg2_end[1]) - (seg1_start[1] - seg1_end[1]) * (seg2_start[0] - seg2_end[0])),
+            ((seg1_start[0] * seg1_end[1] - seg1_start[1] * seg1_end[0]) * (seg2_start[1] - seg2_end[1]) -
+             (seg1_start[1] - seg1_end[1]) * (seg2_start[0] * seg2_end[1] - seg2_start[1] * seg2_end[0])) /
+            ((seg1_start[0] - seg1_end[0]) * (seg2_start[1] - seg2_end[1]) - (seg1_start[1] - seg1_end[1]) * (seg2_start[0] - seg2_end[0]))
+        )
+    elif o1 == 0 and on_segment(seg1_start, seg2_start, seg1_end):
+        # Segments are collinear and seg2_start lies on seg1
+        return seg2_start
+    elif o2 == 0 and on_segment(seg1_start, seg2_end, seg1_end):
+        # Segments are collinear and seg2_end lies on seg1
+        return seg2_end
+    elif o3 == 0 and on_segment(seg2_start, seg1_start, seg2_end):
+        # Segments are collinear and seg1_start lies on seg2
+        return seg1_start
+    elif o4 == 0 and on_segment(seg2_start, seg1_end, seg2_end):
+        # Segments are collinear and seg1_end lies on seg2
+        return seg1_end
+    else:
+        # Segments do not intersect
+        return None
+
+def semicircle_lines(cx, cy, start_angle, end_angle, radius1, radius2):
+
+    # Calculate the coordinates of the starting and ending points of the segment
+    start_x = cx + radius1 * math.cos(start_angle)
+    start_y = -cy + radius1 * math.sin(start_angle)
+
+    end_x = cx + radius1 * math.cos(end_angle)
+    end_y = -cy + radius1 * math.sin(end_angle)
+
+    # Calculate the coordinates of the starting and ending points of the outer circle
+    outer_start_x = cx + radius2 * math.cos(start_angle)
+    outer_start_y = -cy + radius2 * math.sin(start_angle)
+
+    outer_end_x = cx + radius2 * math.cos(end_angle)
+    outer_end_y = -cy + radius2 * math.sin(end_angle)
+
+    return ((start_x, -start_y), (outer_start_x, -outer_start_y)), ((end_x, -end_y), (outer_end_x, -outer_end_y))
 # ==============================================================
 # SECTION: Misc functions
 # Description: Miscelanious functions
@@ -304,3 +415,11 @@ def are_lines_intersecting(start1_x, start1_y, end1_x, end1_y, start2_x, start2_
 def percentage_difference(a, b):
     """Calculates the percentage difference between two values."""
     return abs((a - b) / ((a + b) / 2)) * 100
+
+def find_new_numbers(old_list, new_list):
+    old_set = set(old_list)
+    new_set = set(new_list)
+    
+    new_numbers = new_set - old_set
+    
+    return len(new_numbers), list(new_numbers)

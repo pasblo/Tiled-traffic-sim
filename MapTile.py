@@ -203,7 +203,7 @@ class MapTile():
         # Resize the tile itself
         self.size_x *= factor
         self.size_y *= factor
-        self.image = pygame.transform.scale(self.image, (self.size_x * factor, self.size_y * factor))
+        self.image = pygame.transform.scale(self.image, (self.size_x, self.size_y))
 
         # Resize stops
         for stop in self.stops:

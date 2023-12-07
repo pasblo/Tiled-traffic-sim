@@ -32,12 +32,15 @@ def create_map(map_descriptor, map_name):
 
     # Creating the final map
     map_image = pygame.Surface((screen_width, screen_heigth))
-    map_data = {"stops":[], "turns":[], "traffic-lights":[], "spawn-points":[], "despawn-points":[]}
+    map_data = {"stops":[], "turns":[], "traffic-lights":[], "spawn-points":[], "despawn-points":[], "tile-data":[], "tile-size":0}
 
     # Id incrementer
     spawn_point_id = 0
+    spawn_point_id_snap = spawn_point_id
     despawn_point_id = 0
     elements_ids = {"stops-ids":0, "turns-ids":0, "traffic-lights-ids":0}
+    elements_ids_snap = elements_ids
+    tile_id = 0
     
     # Going over each row
     y = 0
@@ -46,6 +49,10 @@ def create_map(map_descriptor, map_name):
         # Going over each tile
         x = 0
         for tile_descriptor in tile_descriptor_row:
+
+            # Getting a snap of all elements ids
+            elements_ids_snap = elements_ids
+            spawn_point_id_snap = spawn_point_id
             
             # Instance of new tile
             new_tile = MapTile.MapTile(MapTile.TILES[tile_descriptor["Tile"]]) # To-do, fix ids like spawn and despawn was done
@@ -157,12 +164,20 @@ def create_map(map_descriptor, map_name):
             map_data["stops"].extend(tile_data["data"]["stops"])
             map_data["turns"].extend(tile_data["data"]["turns"])
             map_data["traffic-lights"].extend(tile_data["data"]["traffic-lights"])
+            map_data["tile-data"].append([[elements_ids_snap["stops-ids"], elements_ids["stops-ids"]], [elements_ids_snap["turns-ids"], elements_ids["turns-ids"]], [spawn_point_id_snap, spawn_point_id]]) # Storing the first and last stop and turn ids
 
             # Increase x coordinate
             x += 1
+
+            # Increase the tile id
+            tile_id += 1
         
         # Increase y coordinate
         y += 1
+    
+    # Save tile size in the map data file
+    map_data["tile-size"] = tile_pixel_size # In pixels
+    map_data["tile-row-count"] = len(map_descriptor) # In amount
     
     # Save the map as png
     pygame.image.save(map_image, "images/maps/" + map_name + ".png")
