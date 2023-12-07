@@ -105,7 +105,7 @@ def angle_between_vectors(angle, vector):
     """Calculates the angle between a given angle and a vector."""
     return math.atan2(vector[1], vector[0]) - angle
 
-def closest_angular_distance(static_angle, moving_angle, turning_direction):
+def closest_angular_distance(static_angle, moving_angle, turning_direction = "Clockwise"):
     """Returns a positive number if the moving angle is moving towards the static one, and negative number if moving away"""
 
     if turning_direction == "Clockwise":
@@ -201,10 +201,10 @@ def distance_point_to_segment(point_x, point_y, line_x1, line_y1, line_x2, line_
     # Calculate coefficients A, B, C for the equation of the line
     A = line_y2 - line_y1
     B = line_x1 - line_x2
-    C = (line_x2 - line_x1) * line_y1 + (line_y1 - line_y2) * line_x1
 
-    # Calculate the distance from the point to the line using the formula for perpendicular distance
-    #distance = abs(A * point_x + B * point_y + C) / math.sqrt(A**2 + B**2)
+    # Check if the segment is a point
+    if A == 0 and B == 0:
+        return distance_point_to_point(point_x, point_y, line_x1, line_y1)
 
     # Check if the perpendicular projection of the point onto the line segment lies within the segment
     dot_product = (point_x - line_x1) * (line_x2 - line_x1) + (point_y - line_y1) * (line_y2 - line_y1)

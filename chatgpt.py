@@ -1,26 +1,11 @@
 import math
-def rotate_point(x, y, angle, direction = "Counterclockwise"):
-    """
-    Helper function to rotate a point (x, y) around the origin.
 
-    Parameters:
-        x (float): x-coordinate of the point.
-        y (float): y-coordinate of the point.
-        angle (float): Angle of rotation in radians.
-        direction (str): Direction of rotation, "clockwise" or "counterclockwise".
-                        Default is "clockwise".
+def correct_radian(angle):
+    """Ensures the angle is within 0 to 2*pi radians."""
+    return angle % (2 * math.pi)
 
-    Returns:
-        tuple: Rotated coordinates (x_rotated, y_rotated).
-    """
-    if direction == "Clockwise":
-        x_rotated = x * math.cos(angle) + y * math.sin(angle)
-        y_rotated = -x * math.sin(angle) + y * math.cos(angle)
-        
-    elif direction == "Counterclockwise":
-        x_rotated = x * math.cos(angle) - y * math.sin(angle)
-        y_rotated = x * math.sin(angle) + y * math.cos(angle)
+def angle_point_to_point(origin_x, origin_y, far_x, far_y):
+    """Calculates the angle between two points."""
+    return correct_radian(math.atan2(origin_y-far_y, far_x-origin_x))
 
-    return x_rotated, y_rotated
-
-print(rotate_point(1, 1, math.pi / 2, "Clockwise"))
+print(angle_point_to_point)
