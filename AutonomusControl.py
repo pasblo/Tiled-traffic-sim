@@ -6,11 +6,12 @@ GNU GENERAL PUBLIC LICENSE
 import Vehicle
 import random
 import pygame
+import math_utils
 
 going_to_break = True
 going_to_turn = True
 
-SAFE_DISTANCE = 1
+SAFE_DISTANCE = 5
 
 def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
     """
@@ -45,7 +46,7 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
         skippable_turns = []
 
         # Checking if the tile contains a turn and that the vehicle is not stopped
-        check_for_turns = map.tile_contains(vehicle.location_tile, "turn") and vehicle.speed != 0
+        check_for_turns = map.tile_contains(vehicle.location_tile, "turn")# and vehicle.speed != 0
         if check_for_turns:
 
             detected_turns_ids = map.crossed_turns(vehicle)
@@ -101,7 +102,18 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
 
             # Check for brakes, avoid braking while turning
             if vehicle.detect_break_line(map) and going_to_break and ((not new_turn and not ended_turning) or vehicle.skippingturn):
+
+                # Selecting the option to wait for stop
+                vehicle.waiting_for_stop = True
+
+                # Braking to zero speed
                 vehicle.brake(time_delta)
+            
+            else:
+                vehicle.waiting_for_stop = False
+        
+        else:
+            vehicle.waiting_for_stop = False
         
         turn = map.turns[vehicle.turning_turn_id]
 
@@ -109,13 +121,43 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
         if not vehicle.braking:# and abs(map.tile_get_coincidences(vehicle.location_tile, "turn")) <= 1:
 
             # Detect for closest vehicle
-            closest_vehicle_speed, closest_vehicle_distance = vehicle.detect_closest_vehicle(map, vehicle_list, (vehicle.id == set_vehicle))
+            closest_detected_vehicle, closest_vehicle_distance = vehicle.detect_closest_vehicle(map, vehicle_list, (vehicle.id == set_vehicle))
 
-            # Check for visual range
-            """braking_distance = vehicle.braking_distance_to_speed(closest_vehicle_speed)
-            if braking_distance + SAFE_DISTANCE <= closest_vehicle_distance:
-                if vehicle.speed >= closest_vehicle_speed:
-                    vehicle.brake(time_delta)"""
+            if vehicle.id == set_vehicle:
+                print(f"Closest vehicle speed: {closest_detected_vehicle.speed}, closest vehicle distance: {closest_vehicle_distance}")
+
+            # Check if any vehicle was detected
+            if closest_vehicle_distance != -1:
+
+                # Check for visual range
+                braking_distance = vehicle.braking_distance_to_speed(closest_detected_vehicle.speed)
+
+                # Making sure we are close enough that is time to stop
+                if braking_distance + SAFE_DISTANCE + math_utils.pixels_to_meters(vehicle.size_x/2) >= closest_vehicle_distance:
+
+                    # Making sure we are going faster than the vehicle to stop to and that they are not stopping to us
+                    if vehicle.speed >= closest_detected_vehicle.speed and closest_detected_vehicle.closest_vehicle != vehicle:
+                        
+                        # Selecting the option to wait for vehicle
+                        vehicle.waiting_for_vehicle = True
+
+                        # Setting the flag if waiting for stop
+                        vehicle.waiting_for_stop = closest_detected_vehicle.waiting_for_stop
+
+                        # Braking to the speed
+                        vehicle.brake(time_delta)
+                    
+                    else:
+                        vehicle.waiting_for_vehicle = False
+                
+                else:
+                    vehicle.waiting_for_vehicle = False
+            
+            else:
+                vehicle.waiting_for_vehicle = False
+        
+        else:
+            vehicle.waiting_for_vehicle = False
         
         #if vehicle.id == set_vehicle:
             #print(f"Location tile id: {vehicle.location_tile}, direction tile id: {vehicle.direction_tile}")

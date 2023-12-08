@@ -81,6 +81,8 @@ class Vehicle(pygame.sprite.Sprite):
 
         # Status data
         self.braking = False
+        self.waiting_for_stop = False
+        self.waiting_for_vehicle = False
         self.turning = False
         self.skippingturn = False
         self.skipturn = False
@@ -111,6 +113,7 @@ class Vehicle(pygame.sprite.Sprite):
         self.temporal_surface = None
         self.debug_detected = False
         self.closest_vehicle_distance = 1000000 # In meters
+        self.closest_vehicle = None
 
         # Colision turns
         self.collision_x = -1
@@ -950,7 +953,7 @@ class Vehicle(pygame.sprite.Sprite):
                 if math_utils.pixels_to_meters(math_utils.distance_point_to_segment(vehicle.x, -vehicle.y, self.x, -self.y, self.collision_segment1_x, -self.collision_segment1_y)) <= OBSERVING_DETECTION_RANGE:
                     
                     # Calculate distance to detected vehicle
-                    vehicle_first_segment_distance = math_utils.pixels_to_meters(math_utils.distance_point_to_point(self.x, self.y, vehicle.x, vehicle.y))
+                    vehicle_first_segment_distance = math_utils.distance_point_to_point(self.x, self.y, vehicle.x, vehicle.y)
                     if smallest_distance == -1 or vehicle_first_segment_distance < smallest_distance:
                         smallest_distance = vehicle_first_segment_distance
                         closest_vehicle = vehicle
@@ -988,8 +991,8 @@ class Vehicle(pygame.sprite.Sprite):
                         # Calculate the angle between the vehicle and the turn
                         vehicle_turn_angle = math_utils.angle_point_to_point(turn.x, turn.y, vehicle.x, vehicle.y)
 
-                        # Calculate the maximum angle difference
-                        max_angle_difference = OBSERVING_DETECTION_RANGE / self.turn_radius_distance # In meters
+                        # Calculate the maximum angle difference, TO-DO now the max_angle_difference depends on the radius
+                        max_angle_difference = OBSERVING_DETECTION_RANGE / math_utils.pixels_to_meters(self.turn_radius_distance) # In pixels
 
                         # Calculating both angles of the view arc
                         if self.collision_turning_direction == "Clockwise":
@@ -1010,6 +1013,9 @@ class Vehicle(pygame.sprite.Sprite):
                             
                             # Calculating the distance provided by the angle to the car
                             vehicle_angle_distance = abs(math_utils.closest_angular_distance(self.turn_to_collision_angle, vehicle_turn_angle, self.collision_turning_direction))
+
+                            #if debug:
+                            #    print(f"Angle distance: {vehicle_angle_distance}")
 
                             # Calculate the total distance to the detected vehicle
                             new_distance = first_segment_length + vehicle_angle_distance * self.turn_radius_distance
@@ -1040,8 +1046,11 @@ class Vehicle(pygame.sprite.Sprite):
                         #if debug:
                         #    print(f"B")
                         # Calculate distance to detected vehicle
-                        vehicle_second_segment_distance = math_utils.pixels_to_meters(math_utils.distance_point_to_point(self.collision_turn_x, self.collision_turn_y, vehicle.x, vehicle.y))
+                        vehicle_second_segment_distance = math_utils.distance_point_to_point(self.collision_turn_x, self.collision_turn_y, vehicle.x, vehicle.y)
                         
+                        #if debug:
+                        #    print(f"Angle distance: {self.collision_turn_angle}")
+
                         # Calculate the total distance to the detected vehicle
                         new_distance = first_segment_length + self.collision_turn_angle * self.turn_radius_distance + vehicle_second_segment_distance
 
@@ -1053,9 +1062,13 @@ class Vehicle(pygame.sprite.Sprite):
         if debug:
             if closest_vehicle != None: closest_vehicle.trigger_detected()
         
+        # Setting the internal closest vehicle for external refference
+        self.closest_vehicle = closest_vehicle
+        
+        # If detecting any closest vehicle
         if closest_vehicle != None:
-            self.closest_vehicle_distance = smallest_distance
-            return (closest_vehicle.speed, smallest_distance)
+            self.closest_vehicle_distance = math_utils.pixels_to_meters(smallest_distance)
+            return (closest_vehicle, self.closest_vehicle_distance)
 
         else:
             return (-1, -1)
