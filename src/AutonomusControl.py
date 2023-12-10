@@ -3,15 +3,14 @@ Originally designed by pasblo
 GNU GENERAL PUBLIC LICENSE
 """
 
-import Vehicle
+import src.Vehicle as Vehicle
 import random
-import pygame
-import math_utils
+import src.math_utils as math_utils
 
 going_to_break = True
 going_to_turn = True
 
-SAFE_DISTANCE = 5
+SAFE_DISTANCE = 3
 
 def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
     """
@@ -45,6 +44,9 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
         entered_turns = []
         skippable_turns = []
 
+        # Check for debug
+        debug = vehicle.id == set_vehicle
+
         # Checking if the tile contains a turn and that the vehicle is not stopped
         check_for_turns = map.tile_contains(vehicle.location_tile, "turn")# and vehicle.speed != 0
         if check_for_turns:
@@ -56,7 +58,7 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
 
                 # Filter turns that the vehicle has just entered
                 for turn_id in detected_turns_ids:
-                    if vehicle.detect_entering_in_turn(map, turn_id, debug = (vehicle.id == set_vehicle)):
+                    if vehicle.detect_entering_in_turn(map, turn_id, debug = debug):
                         entered_turns.append(turn_id)
 
                 # Decide whether to turn or not and which turn to use
@@ -79,7 +81,7 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
                     ended_turning = True
 
         # Debug
-        #if vehicle.id == set_vehicle:
+        #if debug:
         #    print(f"Vehicle {vehicle.id} last turning: {last_turn}, detected turns {detected_turns_ids}, entered_turns {entered_turns}, skippable turns {skippable_turns}, chosen turn {vehicle.turning_turn_id}, started turning {started_turning}, ended turning {ended_turning}, skipped turning {vehicle.skippingturn}")
 
         # Rotate function
@@ -114,26 +116,32 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
         
         else:
             vehicle.waiting_for_stop = False
-        
-        turn = map.turns[vehicle.turning_turn_id]
 
         # Check if the vehicle is not braking already to a stop sign and if is not on a optional turn
         if not vehicle.braking:# and abs(map.tile_get_coincidences(vehicle.location_tile, "turn")) <= 1:
 
             # Detect for closest vehicle
-            closest_detected_vehicle, closest_vehicle_distance = vehicle.detect_closest_vehicle(map, vehicle_list, (vehicle.id == set_vehicle))
+            closest_detected_vehicle, closest_vehicle_distance = vehicle.detect_closest_vehicle(map, vehicle_list, debug)
 
-            if vehicle.id == set_vehicle:
-                print(f"Closest vehicle speed: {closest_detected_vehicle.speed}, closest vehicle distance: {closest_vehicle_distance}")
+            if debug:
+
+                if closest_detected_vehicle != -1:
+                    print(f"Closest vehicle speed: {closest_detected_vehicle.speed}, closest vehicle distance: {closest_vehicle_distance}")
+                
+                else:
+                    print(f"No vehicle detected nearby")
 
             # Check if any vehicle was detected
             if closest_vehicle_distance != -1:
 
-                # Check for visual range
+                # Distance required for ending in the same point and speed
                 braking_distance = vehicle.braking_distance_to_speed(closest_detected_vehicle.speed)
 
+                # Adding the safe distance
+                total_braking_distance = braking_distance + SAFE_DISTANCE + math_utils.pixels_to_meters(vehicle.size_x/2) + math_utils.pixels_to_meters(closest_detected_vehicle.size_x/2)
+
                 # Making sure we are close enough that is time to stop
-                if braking_distance + SAFE_DISTANCE + math_utils.pixels_to_meters(vehicle.size_x/2) >= closest_vehicle_distance:
+                if total_braking_distance >= closest_vehicle_distance:
 
                     # Making sure we are going faster than the vehicle to stop to and that they are not stopping to us
                     if vehicle.speed >= closest_detected_vehicle.speed and closest_detected_vehicle.closest_vehicle != vehicle:
@@ -160,7 +168,7 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
             vehicle.waiting_for_vehicle = False
         
         #if vehicle.id == set_vehicle:
-            #print(f"Location tile id: {vehicle.location_tile}, direction tile id: {vehicle.direction_tile}")
+        #    print(f"Location tile id: {vehicle.location_tile}, direction tile id: {vehicle.direction_tile}, collision tile id: {vehicle.collision_tile}")
             #print(f"Closest vehicle speed: {closest_vehicle_speed}, closest vehicle distance: {closest_vehicle_distance}, closest stop distance: {closest_stop_distance}, braking vehicle {debug_vehicle_braking}, braking stop: {debug_stop_breaking}")
 
         # Increase acceleration
@@ -168,6 +176,9 @@ def move_vehicles(vehicle_list, map, time_delta, set_vehicle):
 
         # Move the vehicle
         vehicle.move(map, time_delta)
+
+        #if debug:
+        #    print(f"Position tile id: {vehicle.location_tile}, direction tile id: {vehicle.direction_tile}, collision tile id: {vehicle.collision_tile}")
 
 def check_collisions(vehicle_list):
     new_collisions = 0
@@ -190,7 +201,7 @@ def render_vehicles(vehicle_list, screen, map, set_vehicle):
     for vehicle in vehicle_list:
         vehicle.render(screen, map, debug = (set_vehicle == vehicle.id))
 
-def spawn_vehicles(map, time_delta, latest_vehicle_id):
+def spawn_vehicles(map, time_delta, latest_vehicle_id, distances):
     """
     Add new vehicles to the map following the probabilities of spawning for each spawn point.
 
@@ -211,15 +222,18 @@ def spawn_vehicles(map, time_delta, latest_vehicle_id):
         spawn = map.spawns[spawn_id]
         vehicle_type_random = random.random()
 
+        vehicle_type_id = 0
         for vehicle in Vehicle.VEHICLES:
             
             # Check if this vehicle should spawn
             if vehicle_type_random <= vehicle["Spawning-rate"]:
                 vehicle_speed = vehicle["Max-speed"] * spawn.speed  # The spawn speed is a percentage of the max speed
-                new_vehicle = Vehicle.Vehicle(vehicle, {"id": latest_vehicle_id, "x": spawn.x, "y": spawn.y, "direction": spawn.direction, "speed": vehicle_speed}, map)
+                new_vehicle = Vehicle.Vehicle(vehicle, {"id": latest_vehicle_id, "x": spawn.x, "y": spawn.y, "direction": spawn.direction, "speed": vehicle_speed}, map, distances[vehicle_type_id])
                 new_vehicles.append(new_vehicle)
                 latest_vehicle_id += 1
                 break
+                
+            vehicle_type_id += 1
     
     return {"vehicles": new_vehicles, "new_id": latest_vehicle_id}
     

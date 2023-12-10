@@ -5,9 +5,9 @@ GNU GENERAL PUBLIC LICENSE
 
 import pygame
 import math
-import Map
-import math_utils
+import src.math_utils as math_utils
 import random
+import libs.ComsChannelsSim.PowerElement as powerElement
 
 """
 - Name of the vehicle
@@ -42,7 +42,7 @@ OBSERVING_DISTANCE = 10 # Distance in meters a vehicle can see in front of it
 OBSERVING_DETECTION_RANGE = 2 # Distance from the observing line to the car to be detected
 
 class Vehicle(pygame.sprite.Sprite):
-    def __init__(self, type_of_vehicle, starting_state, map):
+    def __init__(self, type_of_vehicle, starting_state, map, max_coms_range):
         """
         Initializes a new instance of the Vehicle class.
 
@@ -132,6 +132,9 @@ class Vehicle(pygame.sprite.Sprite):
 
         # Calculate the tile the vehicle is in, aiming at and colliding with
         self._calculate_tile_location(map)
+
+        # Save the max comunicaction range
+        self.max_comunications_range = max_coms_range
     
     def __str__(self):
         """
@@ -1073,9 +1076,6 @@ class Vehicle(pygame.sprite.Sprite):
         else:
             return (-1, -1)
 
-        # Calculate the distance to that car, taking into account that
-        # if it is inside a turn, calculate that distance as well
-
     # ==============================================================
     # SECTION: Moving functions
     # Description: Functions for moving the vehicle around the map.
@@ -1206,13 +1206,19 @@ class Vehicle(pygame.sprite.Sprite):
                 pygame.draw.line(screen, (0, 0, 255), (int(self.collision_turn_x), int(self.collision_turn_y)), (int(self.collision_segment2_x), int(self.collision_segment2_y)))
 
             # Render collision tile as green (First so its overdrawn by location if same)
-            map.render_tile(self.collision_tile, (0, 255, 0), screen)
+            if self.collision_tile != -1:
+                map.render_tile(self.collision_tile, (0, 255, 0), screen)
 
             # Render location tile as red
-            map.render_tile(self.location_tile, (255, 0, 0), screen)
+            if self.location_tile != -1:
+                map.render_tile(self.location_tile, (255, 0, 0), screen)
 
             # Render direction tile as blue
-            map.render_tile(self.direction_tile, (0, 0, 255), screen)
+            if self.direction_tile != -1:
+                map.render_tile(self.direction_tile, (0, 0, 255), screen)
+
+            # Render the distance circle
+            pygame.draw.circle(screen, (0, 255, 255), (int(self.x), int(self.y)), math_utils.meters_to_pixels(self.max_comunications_range), 2)
 
             # Render turn collision point
             if self.turning_turn_id != -1:

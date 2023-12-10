@@ -5,9 +5,8 @@ GNU GENERAL PUBLIC LICENSE
 
 import pygame
 import json
-import time
 import math
-import math_utils
+import src.math_utils as math_utils
 import random
 
 class Stop:
@@ -122,7 +121,6 @@ class Turn:
         going_to_second = math_utils.closest_angular_distance(self.second_angle, angle, direction)
 
         return going_to_second
-
 
 class Spawn_Point:
     """
@@ -339,6 +337,7 @@ class Map:
         # Store the size of each tile
         self.tile_size = self.json.get("tile-size", 0)
         self.tile_row_count = self.json.get("tile-row-count", 0)
+        self.tile_column_count = self.json.get("tile-column-count", 0)
 
         # Mobility map data
         try:
@@ -449,9 +448,13 @@ class Map:
     
     def render_tile(self, tile_id, color, screen):
 
+        if tile_id < 0:
+            return
+
         # Get coordinates for the tile
-        row = tile_id // self.tile_row_count
-        col = tile_id % self.tile_row_count
+        row = tile_id // self.tile_column_count
+        col = tile_id % self.tile_column_count
+        #print(f"Row: {row}, Column: {col}")
         tile_x = col * self.tile_size
         tile_y = row * self.tile_size
 
@@ -744,8 +747,8 @@ class Map:
         x_tile = math.floor(x / self.tile_size)
 
         # Spawn bug
-        if x_tile >= self.tile_row_count:
-            x_tile = self.tile_row_count - 1
+        if x_tile >= self.tile_column_count:
+            x_tile = self.tile_column_count - 1
 
         y_tile = math.floor(y / self.tile_size)
 
@@ -765,7 +768,7 @@ class Map:
 
         # Looking mostly right
         if (direction >= 0 and direction <= math.pi / 4) or (direction < math.pi * 2 and direction > math.pi * 7/4):
-            if ((location_tile + 1) % self.tile_row_count) != 0:
+            if ((location_tile + 1) % self.tile_column_count) != 0:
                 return location_tile + 1
             
             else:
@@ -781,7 +784,7 @@ class Map:
         
         # Looking mostly left
         elif direction > math.pi * 3/4 and direction <= math.pi * 5/4:
-            if (location_tile % self.tile_row_count) != 0:
+            if (location_tile % self.tile_column_count) != 0:
                 return location_tile - 1
             
             else:

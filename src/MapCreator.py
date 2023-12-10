@@ -3,8 +3,8 @@ Originally designed by pasblo
 GNU GENERAL PUBLIC LICENSE
 """
 
-import MapTile
-import math_utils
+import src.MapTile as MapTile
+import src.math_utils as math_utils
 import pygame
 import math
 import json
@@ -122,7 +122,7 @@ def create_map(map_descriptor, map_name):
                 spawn_point_id += 1
             
             # Check if this tile has a connection on the bottom side of the map
-            if y == len(map_descriptor[0]) - 1 and math.radians(270) in road_connections_angles:
+            if y == len(map_descriptor) - 1 and math.radians(270) in road_connections_angles:
 
                 # Left most lane is despawn
                 start_x_spawn_line = tile_x + road_start_tile
@@ -140,7 +140,7 @@ def create_map(map_descriptor, map_name):
                 spawn_point_id += 1
 
             # Check if this tile has a connection on the right side of the map
-            if x == len(map_descriptor) - 1 and math.radians(0) in road_connections_angles:
+            if x == len(map_descriptor[0]) - 1 and math.radians(0) in road_connections_angles:
 
                 # Top most lane is spawn
                 y_spawn_point = tile_y + road_start_tile + math.floor((road_middle_tile - road_start_tile) / 2)
@@ -178,6 +178,7 @@ def create_map(map_descriptor, map_name):
     # Save tile size in the map data file
     map_data["tile-size"] = tile_pixel_size # In pixels
     map_data["tile-row-count"] = len(map_descriptor) # In amount
+    map_data["tile-column-count"] = len(map_descriptor[0])
     
     # Save the map as png
     pygame.image.save(map_image, "images/maps/" + map_name + ".png")

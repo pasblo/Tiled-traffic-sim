@@ -5,9 +5,8 @@ All this meth is for pygame logic, with (0, 0) on the top left of the window
 """
 
 import math
-import pygame
 
-MAP_SCALE = 10 # x pixels = 1 meter
+MAP_SCALE = 5 # x pixels = 1 meter
 
 # ==============================================================
 # SECTION: Map conversion functions
@@ -288,8 +287,6 @@ def change_distance_without_angle_change(x1, y1, x2, y2, d_new):
     y2_new = y1 + s * (y2 - y1)
 
     return x2_new, y2_new
-
-import math
 
 def rotate_point(x, y, angle, direction = "Counterclockwise"): # Works properly
     """

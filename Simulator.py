@@ -3,18 +3,17 @@ Originally designed by pasblo
 GNU GENERAL PUBLIC LICENSE
 """
 
-import math
-import Vehicle
-import Map
 import pygame
 import sys
 import time
-import AutonomusControl
-import MapCreator
+import src.Map as Map
+import src.AutonomusControl as AutonomusControl
+import src.MapCreator as MapCreator
+import src.Vanet as Vanet
 
 # Control variables
 TIME_FACTOR = 1 # 1 second of simulation, equals TIME_FACTOR seconds
-LIMIT_VEHICLES = 40
+LIMIT_VEHICLES = 50
 
 # Initialize pygame fonts
 pygame.font.init()
@@ -23,18 +22,38 @@ font = pygame.font.Font(None, 36)
 # Initialize pygame clock
 clock = pygame.time.Clock()
 
-# Create map from tiles
-map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":5, "Rotation":0}, {"Tile":2, "Rotation":180}],
+# Create data for all transceivers
+transceiver_descriptor = [{"tx_power": 0.2, "sensibility": -40, "frequency":4.9e9}, {"tx_power": 0.5, "sensibility": -40, "frequency":4.9e9}, {"tx_power": 0.5, "sensibility": -40, "frequency":4.9e9}, {"tx_power": 0.2, "sensibility": -40, "frequency":4.9e9}]
+
+# Create vanet
+vanet = Vanet.Vanet(transceiver_descriptor)
+
+# Calculate the maximum distances for all transceivers
+distances = vanet.calculate_max_distances()
+
+"""map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":5, "Rotation":0}, {"Tile":2, "Rotation":180}],
                   [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":4, "Rotation":90}, {"Tile":3, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}],
                   [{"Tile":2, "Rotation":270}, {"Tile":6, "Rotation":0}, {"Tile":4, "Rotation":0}, {"Tile":2, "Rotation":90}, {"Tile":1, "Rotation":90}],
                   [{"Tile":2, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":2, "Rotation":0}, {"Tile":3, "Rotation":0}, {"Tile":2, "Rotation":180}, {"Tile":1, "Rotation":90}],
-                  [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":2, "Rotation":0}, {"Tile":2, "Rotation":90}]]
+                  [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":2, "Rotation":0}, {"Tile":2, "Rotation":90}]]"""
 
 """map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":1, "Rotation":0}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}],
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
                   [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}]]"""
+
+# Create map from tiles
+map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":1, "Spawn-probability":5}, {"Tile":4, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0, "Spawn-speed":1, "Spawn-probability":5}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":2, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":2, "Rotation":180}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":2, "Rotation":270}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":4, "Rotation":90}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":6, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":2, "Rotation":180}],
+                  [{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1}, {"Tile":2, "Rotation":180}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":2, "Rotation":0}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":2, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":6, "Rotation":0}, {"Tile":2, "Rotation":180}, {"Tile":0, "Rotation":0}],
+                  [{"Tile":1, "Rotation":0, "Spawn-speed":0.75, "Spawn-probability":1.5}, {"Tile":3, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":1, "Rotation":0}, {"Tile":2, "Rotation":90}, {"Tile":1, "Rotation":90}, {"Tile":0, "Rotation":0}],
+                  [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.5, "Spawn-probability":1}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.3, "Spawn-probability":2}, {"Tile":0, "Rotation":0}]]
 
 # Create the map itself and get the size needed for the screen
 map_name = "TestMap"
@@ -63,7 +82,7 @@ collision_rate = 0
 """
 Probabilidades:
 Sin nada: ~4%
-Con frenado entre coches: 
+Con frenado entre coches: ~0.1%
 Con algoritmo: 
 """
 
@@ -97,16 +116,16 @@ while True:
         
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_MINUS:
-                dynamic_multiplier *= 0.8
+                dynamic_multiplier -= 0.1
             
             elif event.key == pygame.K_PLUS:
-                dynamic_multiplier *= 1.2
+                dynamic_multiplier += 0.1
 
     # Making sure the we only have a certain amount of vehicles
     if len(vehicles_list) < LIMIT_VEHICLES:
 
         # Spawn vehicles on the spawn points
-        new_sapwns = AutonomusControl.spawn_vehicles(test_map, time_delta, latest_vehicle_id)
+        new_sapwns = AutonomusControl.spawn_vehicles(test_map, time_delta, latest_vehicle_id, distances)
         total_number_of_cars += len(new_sapwns)
         vehicles_list.extend(new_sapwns["vehicles"])
         latest_vehicle_id = new_sapwns["new_id"]
@@ -139,7 +158,7 @@ while True:
     screen.blit(fps_text, (10, 10))
 
     # Render the debug text on the screen
-    """text_1 = font.render(f"Speed: {dynamic_multiplier}", True, (0, 0, 0))  # Black color
+    text_1 = font.render(f"Speed: {dynamic_multiplier}", True, (0, 0, 0))  # Black color
     text_1_rect = text_1.get_rect()
     text_1_rect.topleft = (10, pygame.display.Info().current_h - text_1_rect.height - 10)  # Adjust the position here
     screen.blit(text_1, text_1_rect)
@@ -152,7 +171,7 @@ while True:
     text_1 = font.render(f"Collision rate: {collision_rate}%", True, (0, 0, 0))  # Black color
     text_1_rect = text_1.get_rect()
     text_1_rect.topleft = (10, pygame.display.Info().current_h - text_1_rect.height - 50)  # Adjust the position here
-    screen.blit(text_1, text_1_rect)"""
+    screen.blit(text_1, text_1_rect)
 
     # Update the screen
     pygame.display.flip()
@@ -162,9 +181,3 @@ while True:
 
     # Tick the FPS clock
     clock.tick()  # Set the desired frame rate (e.g., 60 FPS)
-
-# NOTES:
-# The function that calculates the distance between cars, it has to take into consideration
-# the turning angles, and calculate the curved distance as well as the straight distance
-# Create a list of all vehicles with what tile are they in, so other functions can make use
-# of it and be more efficient

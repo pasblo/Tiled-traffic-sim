@@ -5,9 +5,9 @@ GNU GENERAL PUBLIC LICENSE
 
 import pygame
 import json
-import Map
+import src.Map as Map
 import math
-import math_utils
+import src.math_utils as math_utils
 
 # Before doing any change put coordinates with respect to the center of the tile, remember -y
 
