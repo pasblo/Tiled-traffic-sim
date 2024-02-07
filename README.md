@@ -12,7 +12,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/pasblo/Tiled-traffic-sim">
-    <img src="docs/icon_v2.png" alt="Icon" width="100" height="100">
+    <img src="docs/Icon_v2.png" alt="Icon" width="100" height="100">
   </a>
 
 <h3 align="center">Tiled traffic simmulator</h3>
