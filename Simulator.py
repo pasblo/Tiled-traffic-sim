@@ -56,7 +56,7 @@ map_descriptor = [[{"Tile":1, "Rotation":0, "Spawn-speed":1, "Spawn-probability"
                   [{"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.5, "Spawn-probability":1}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":0, "Rotation":0}, {"Tile":1, "Rotation":90, "Spawn-speed":0.3, "Spawn-probability":2}, {"Tile":0, "Rotation":0}]]
 
 # Create the map itself and get the size needed for the screen
-map_name = "TestMap"
+map_name = "Map"
 map_size = MapCreator.create_map(map_descriptor, map_name)
 
 # Create the screen and name it

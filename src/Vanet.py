@@ -7,6 +7,15 @@ import matplotlib.pyplot as plt
 class Transceiver:
     def __init__(self, tx_power, sensibility_dB, frequency):
 
+        # b
+        amp1 = PowerElement.powerElement(gain_dB = 10, figure = 3)
+        amp2 = PowerElement.powerElement(gain_dB = 10, figure = 3, previousElement = amp1)
+        cable1 = PowerElement.powerElement(attenuation_dB = 10, previousElement = amp2)
+        cable2 = PowerElement.powerElement(attenuation_dB = 10, previousElement = cable1)
+
+        print("Exercise:")
+        cable2.printEquivalentValues()
+
         # Define the antenna and circulator to be used
         antenna = PowerElement.powerElement(gain_dB = 5)
         circulator = PowerElement.powerElement(attenuation_dB = 0.3, previousElement = antenna)
